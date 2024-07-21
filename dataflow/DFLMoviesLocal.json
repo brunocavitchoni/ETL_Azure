@@ -1,0 +1,99 @@
+{
+	"name": "DFLMoviesLocal",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "DSMoviesLocal",
+						"type": "DatasetReference"
+					},
+					"name": "DFLMoviesDB"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "DSMoviesLocal",
+						"type": "DatasetReference"
+					},
+					"name": "coletor",
+					"rejectedDataLinkedService": {
+						"referenceName": "VSMoviesLocal",
+						"type": "LinkedServiceReference"
+					}
+				}
+			],
+			"transformations": [
+				{
+					"name": "changeColumnName"
+				},
+				{
+					"name": "movies1950plus"
+				},
+				{
+					"name": "PrimaryGenre"
+				},
+				{
+					"name": "rankRatings"
+				},
+				{
+					"name": "aggregate"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          movie as string,",
+				"          title as string,",
+				"          genres as string,",
+				"          year as string,",
+				"          Rating as string,",
+				"          {Rotton Tomato} as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false) ~> DFLMoviesDB",
+				"DFLMoviesDB select(mapColumn(",
+				"          movie,",
+				"          title,",
+				"          genres,",
+				"          year,",
+				"          Rating,",
+				"          {Rotten Tomatoes} = {Rotton Tomato}",
+				"     ),",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true) ~> changeColumnName",
+				"changeColumnName filter(toInteger(year) > 1950) ~> movies1950plus",
+				"movies1950plus derive(PrimaryGenre = iif(locate('|', genres) > 1, left(genres, locate('|', genres) - 1), genres)) ~> PrimaryGenre",
+				"PrimaryGenre window(over(PrimaryGenre,",
+				"          year),",
+				"     asc({Rotten Tomatoes}, true),",
+				"     ratingRank = rank()) ~> rankRatings",
+				"rankRatings aggregate(groupBy(PrimaryGenre,",
+				"          year),",
+				"     avgRatings = avg(toInteger({Rotten Tomatoes})),",
+				"          maxRating = first(title),",
+				"          minRating = last(title),",
+				"          countMovies = count()) ~> aggregate",
+				"aggregate sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          movie as string,",
+				"          title as string,",
+				"          genres as string,",
+				"          year as string,",
+				"          Rating as string,",
+				"          {Rotton Tomato} as string",
+				"     ),",
+				"     partitionFileNames:['DFLMoviesWeb'],",
+				"     umask: 0022,",
+				"     preCommands: [],",
+				"     postCommands: [],",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     partitionBy('hash', 1)) ~> coletor"
+			]
+		}
+	}
+}
